@@ -1,0 +1,120 @@
+---
+title: "Test"
+author: "Daniel Pinckney"
+date: '2025-04-28'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(devtools)
+library(countrycode)
+library(CoordinateCleaner)
+library(dplyr)
+library(ggplot2)
+library(rgbif)
+library(sf)
+library(rnaturalearth)
+```
+
+## R Markdown
+
+This is a Test R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. I am embedding R code chunks like this:
+
+```{r load data}
+dat <- occ_search(scientificName = "Paranuncia gigantea", 
+                  limit = 5000, 
+                  hasCoordinate = TRUE)
+
+dat <- dat$data
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r filter columns}
+dat <- dat %>%
+  dplyr::select(species, decimalLongitude, 
+                decimalLatitude, countryCode, individualCount,
+                gbifID, family, taxonRank, coordinateUncertaintyInMeters,
+                year, basisOfRecord, institutionCode, datasetName)
+```
+
+```{r clean step one}
+dat <- dat %>%
+  filter(!is.na(decimalLongitude)) %>%
+  filter(!is.na(decimalLatitude))
+```
+
+```{r clean step two}
+dat <- dat %>%
+  filter(decimalLongitude != 0) %>%
+  filter(decimalLatitude != 0)
+```
+
+```{r convert country codes}
+dat$countryCode <-  countrycode(dat$countryCode, 
+                                origin =  'iso2c',
+                                destination = 'iso3c')
+```
+
+```{r world map}
+wm <- borders("world", colour = "gray50", fill = "gray50")
+ggplot() +
+  coord_fixed() +
+  wm +
+  geom_point(data = dat,
+             aes(x = decimalLongitude, y = decimalLatitude),
+             colour = "darkred",
+             size = 0.5) +
+  theme_bw()
+```
+```{r Tasmania map}
+Tasm <- borders("world", regions = "Australia:tasmania", colour = "gray50", fill = "gray50")
+ggplot() +
+  coord_fixed() +
+  Tasm +
+  geom_point(data = dat,
+             aes(x = decimalLongitude, y = decimalLatitude),
+             colour = "darkred",
+             size = 0.5) +
+  theme_bw()
+```
+```{r Aus map}
+Ausm <- borders("world", regions = "Australia", colour = "gray50", fill = "gray50")
+ggplot() +
+  coord_fixed() +
+  Ausm +
+  geom_point(data = dat,
+             aes(x = decimalLongitude, y = decimalLatitude),
+             colour = "darkred",
+             size = 0.5) +
+  theme_bw()
+```
+
+```{r full package clean}
+dat <- data.frame(dat)
+flags <- clean_coordinates(x = dat, 
+                           lon = "decimalLongitude", 
+                           lat = "decimalLatitude",
+                           countries = "countryCode",
+                           species = "species",
+                           tests = c("capitals", "centroids",
+                                    "equal", "zeros", "countries"))
+```
+```{r}
+summary(flags)
+plot(flags, lon = "decimalLongitude", lat = "decimalLatitude")
+```
+
+
+```{r}
+names(dat)[2:3] <- c("decimalLongitude", "decimalLatitude")
+
+clean <- dat %>%
+  cc_zero()
+```
+
