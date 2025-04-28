@@ -17,11 +17,7 @@ library(sf)
 library(rnaturalearth)
 ```
 
-## R Markdown
 
-This is a Test R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. I am embedding R code chunks like this:
 
 ```{r load data}
 dat <- occ_search(scientificName = "Paranuncia gigantea", 
@@ -30,10 +26,6 @@ dat <- occ_search(scientificName = "Paranuncia gigantea",
 
 dat <- dat$data
 ```
-
-## Including Plots
-
-You can also embed plots, for example:
 
 ```{r filter columns}
 dat <- dat %>%
@@ -95,7 +87,19 @@ ggplot() +
   theme_bw()
 ```
 
-```{r full package clean}
+```{r clean to just Tasmania}
+dat_Tas <- dat %>%
+  filter(decimalLongitude > 145) %>%
+  filter(decimalLatitude < -39)
+```
+
+```{r keeping only unique coordinates}
+dat_uniq <- dplyr::distinct(dat, decimalLongitude, decimalLatitude, .keep_all = TRUE)
+```
+
+```{r full package clean, broken}
+###error: "[buffer] crs not defined"
+
 dat <- data.frame(dat)
 flags <- clean_coordinates(x = dat, 
                            lon = "decimalLongitude", 
@@ -105,13 +109,15 @@ flags <- clean_coordinates(x = dat,
                            tests = c("capitals", "centroids",
                                     "equal", "zeros", "countries"))
 ```
-```{r}
+```{r, broken}
 summary(flags)
 plot(flags, lon = "decimalLongitude", lat = "decimalLatitude")
 ```
 
 
-```{r}
+```{r, broken}
+###error: "[buffer] crs not defined"
+
 names(dat)[2:3] <- c("decimalLongitude", "decimalLatitude")
 
 clean <- dat %>%
