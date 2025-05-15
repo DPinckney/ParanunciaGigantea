@@ -1,0 +1,129 @@
+---
+title: "ClimateVariables"
+author: "Daniel Pinckney"
+date: '2025-04-28'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(devtools)
+library(countrycode)
+library(CoordinateCleaner)
+library(dplyr)
+library(ggplot2)
+library(rgbif)
+library(sf)
+library(rnaturalearth)
+library(raster)
+#library(rasterVis)
+#library(rgdal)
+library(maps)
+library(mapdata)
+#library(maptools)
+library(glmnet)
+library(rnaturalearthdata)
+library(ggspatial)
+library(plotly)
+library(tidyverse)
+library(magrittr)
+library(sdmpredictors)
+```
+
+```{r}
+
+Env <- geodata::worldclim_global(var="bio", res=0.5, path= "/Users/dpinckney/Downloads/OEBThesis/Mapping/NicheModeling") ##comes in as global by default
+library(sdmpredictors)
+
+options(sdmpredictors_datadir="/Users/dpinckney/Downloads/OEBThesis/Mapping/NicheModeling/wc2.1_30s_bio")
+
+specific <- load_layers(c("wc2.1_30s_bio_1"))
+
+
+#worldclim_global(var, res, path, ..
+Env2 <- as(Env, "Raster")
+
+
+###Repeat this for each genus
+########################################################################################################################################
+########################################################################################################################################
+dataset_NZ_oop
+
+write.csv(dataset_NZ_oop, "BCdataset_NZ_oop.csv", row.names=FALSE)
+
+
+my_species <- dataset_NZ_oop 
+
+#do not inlcude duplicates (samples in same climate data grid cells)
+coordinates(my_species)=~long+lat
+proj4string(my_species) <- "+proj=longlat +datum=WGS84 +no_defs"
+pts_to_keep = !duplicated(raster::cellFromXY(Env2[[1]],my_species))
+my_species = my_species[pts_to_keep,]
+my_species@data=cbind(my_species@data,raster::extract(Env2,my_species,ID=F))
+my_species@data
+
+oop_bioclims <- as.data.frame(my_species@data)
+
+########################################################################################################################################
+########################################################################################################################################
+my_species2 <- my_datab
+
+my_datab
+write.csv(my_datab, "BCdataset_NZ_per.csv", row.names=FALSE)
+
+#do not inlcude duplicates (samples in same climate data grid cells)
+coordinates(my_species2)=~long+lat
+proj4string(my_species2) <- "+proj=longlat +datum=WGS84 +no_defs"
+pts_to_keep = !duplicated(raster::cellFromXY(Env2[[1]],my_species2))
+my_species2 = my_species2[pts_to_keep,]
+my_species2@data=cbind(my_species2@data,raster::extract(Env2,my_species2,ID=F))
+
+
+peri_bioclims <- as.data.frame(my_species2@data)
+
+peri_bioclims
+########################################################################################################################################
+########################################################################################################################################
+
+
+count(oop_bioclims)
+count(peri_bioclims)
+
+genera_climate_df <- rbind(oop_bioclims, peri_bioclims)
+
+genera_climate_df
+write.csv(genera_climate_df, "genera_climate_df.csv")
+
+
+```
+
+
+```{r}
+
+#colinnearlity
+## Not run: 
+library(usdm)
+
+CSF.df <- with(oop_bioclims, data.frame(wc2.1_2.5m_bio_1, wc2.1_2.5m_bio_2, wc2.1_2.5m_bio_3, wc2.1_2.5m_bio_4, wc2.1_2.5m_bio_5, wc2.1_2.5m_bio_6, wc2.1_2.5m_bio_7, wc2.1_2.5m_bio_8, wc2.1_2.5m_bio_9, wc2.1_2.5m_bio_10, wc2.1_2.5m_bio_11, wc2.1_2.5m_bio_12, wc2.1_2.5m_bio_13, wc2.1_2.5m_bio_14, wc2.1_2.5m_bio_15, wc2.1_2.5m_bio_16, wc2.1_2.5m_bio_17, wc2.1_2.5m_bio_18, wc2.1_2.5m_bio_19))
+usdm::vif(CSF.df)
+
+
+v1 <- usdm::vifcor(CSF.df, th=0.7) # identify collinear variables that should be excluded
+
+v1
+
+
+CSF.df2 <- with(peri_bioclims, data.frame(wc2.1_2.5m_bio_1, wc2.1_2.5m_bio_2, wc2.1_2.5m_bio_3, wc2.1_2.5m_bio_4, wc2.1_2.5m_bio_5, wc2.1_2.5m_bio_6, wc2.1_2.5m_bio_7, wc2.1_2.5m_bio_8, wc2.1_2.5m_bio_9, wc2.1_2.5m_bio_10, wc2.1_2.5m_bio_11, wc2.1_2.5m_bio_12, wc2.1_2.5m_bio_13, wc2.1_2.5m_bio_14, wc2.1_2.5m_bio_15, wc2.1_2.5m_bio_16, wc2.1_2.5m_bio_17, wc2.1_2.5m_bio_18, wc2.1_2.5m_bio_19))
+usdm::vif(CSF.df)
+
+
+v2 <- usdm::vifcor(CSF.df2, th=0.7) # identify collinear variables that should be excluded
+
+v2
+
+
+
+
+## End(Not run)
+
+```

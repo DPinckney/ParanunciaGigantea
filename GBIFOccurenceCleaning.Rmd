@@ -108,6 +108,11 @@ dat_uniq_Tas <- dat_uniq %>%
   filter(decimalLatitude > -44)
 ```
 
+```{r}
+write.csv(dat_uniq_Tas,"~/Downloads/TasParanuncia.csv", row.names = FALSE)
+```
+
+
 ```{r Aus map}
 Ausm2 <- borders("world", regions = "Australia", colour = "gray50", fill = "gray50")
 ggplot() +
