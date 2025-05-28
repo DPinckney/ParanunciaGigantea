@@ -1,0 +1,472 @@
+---
+title: "Paranuncia gigantea"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+
+Species Genetic Clustering PCA
+```{r}
+# Load libraries - you might not actually need all of these so if there are any issues with installation try running the code without all of them. If you have any issues lmk.
+library(adegenet)
+library(PCDimension)
+library(mclust)
+library(cluster)
+library(MASS)
+library(factoextra)
+library(vcfR)
+library(ggforce)
+library(dplyr)
+library(gridExtra)
+
+#read in vcf as vcfR
+#setwd("/Users/alord/Desktop/Thesis_chapters/")
+vcfR <- read.vcfR("NZ_oop_90p_randomsnp.vcf")
+
+#convert vcfR into a 'genind' object
+data<-vcfR2genind(vcfR)
+#convert to genlight
+gen<-vcfR2genlight(vcfR)
+
+# run DAPC
+## run find-clusters retaining all Principle components (PCs) and clusters based on optimal BIC, essentially - play around with these numbers a bit and try different things, hopefully optimal number of clusters should align with what we got with VAE. For the number of PCs pick the number (by looking at the plots) that is required to explain 70-80% of the variance. 
+grp <- find.clusters(gen, max.n.clust = 17)
+grp <- find.clusters(gen, n.pca=5, n.clust=7)
+
+## run dapc keeping the number of PCs required to explain 75% of the variance (= 7PCs)
+dapc1 <- dapc(gen, grp$grp)
+
+#dapc1 <- dapc(gen, grp$grp, n.pca = 5, n.da = 3)
+
+## check individual memberships
+grp$grp
+
+
+
+## plot results for final selection e.g. K=7, npca = 5, nD = 3
+plot.df<-as.data.frame(dapc1$ind.coord)
+
+PCA_plot <- ggplot(data=plot.df, aes(x=LD2, y=LD3, color=grp$grp))+
+              geom_point(cex=2)+
+              theme_classic()+
+              labs(x="Linear discriminant 2",y="Linear discriminant 3")
+
+
+#undo the # to save a pdf of plot
+#pdf("DPAC_PCA_k7.pdf")
+print(PCA_plot)     # Plot 1 --> in the first page of PDF
+#dev.off() 
+
+
+#pdf("dpac_output.pdf")
+#plot.df<-as.data.frame(dapc1$ind.coord)
+#ggplot(data=plot.df, aes(x=LD3, y=LD2, color=grp$grp))+
+#  geom_point(cex=2)+
+#  theme_classic()+
+#  labs(x="Linear discriminant 3",y="Linear discriminant 2")
+#dev.off()
+
+
+dapc_data_df <-
+  # as_tibble() converts the ind.coord matrix to a special data frame called a tibble. 
+  as_tibble(dapc1$ind.coord, rownames = "individual") %>%
+  # mutate changes or adds columns to a data frame. Here, we're adding the population and group assignment columns to the data frame
+  mutate(group = dapc1$grp)
+
+dapc_data_df
+#write.csv(dapc_data_df, "dapc_data_df.csv")
+
+```
+
+
+
+Species Genetic Clustering SNMF (Sparse Non-negative Matrix Factorization)
+```{r}
+#Code based on the following tutorial
+#http://membres-timc.imag.fr/Olivier.Francois/tutoRstructure.pdf
+library(LEA)
+library(fields)
+library(RColorBrewer)
+library(mapplots)
+
+setwd("/Users/alord/Desktop/Thesis_chapters/NZ_Ooperipatellus/Species_delim")
+
+struct2geno("NZ_oop_90p_randomsnp.stru", ploidy = 2, FORMAT = 2, extra.row = 0, extra.col = 1)
+
+# Testing K value of 1-17, to pick optimal number of clusters (k), I frist run it with no repitions just to gauge the upper number of K that is realistic to test
+obj.at = snmf("NZ_oop_90p_randomsnp.stru.geno", K = 1:17, ploidy = 2, entropy = T, CPU = 1, project = "new")
+plot(obj.at, col = "blue4", cex = 1.4, pch = 19)
+
+# running snmf #I rerun using 100 repitions per test on a realistic range of k clusters
+project.snmf <- snmf("NZ_oop_90p_randomsnp.stru.geno", K = 1:12, entropy = TRUE, repetitions = 100,project = "new")
+plot(project.snmf, col = "blue4", cex = 1.4, pch = 19)
+
+#using output plot I determine the lowest value
+# e.g. k=7 is the lowest, followed by 5,8 and then 6
+
+# get the cross-entropy value for each run 
+ce <- cross.entropy(project.snmf, K = 7)
+
+# select the run with the lowest cross-entropy value
+best <- which.min(ce)
+best
+
+#Extract the Q matrix for the best run with K = 5
+#Q_matrix <- Q(project.snmf, K = 9, run = best)
+# Assuming Q_matrix is a matrix with nrow = 39 corresponding to each individual
+# Determine the order of samples as plotted by the barchart
+#ordered_indices <- order(max.col(Q_matrix, ties.method = "first"))
+# Assuming sample_labels contains the sample names in the original order
+# Extract unique sample names (considering duplicates in STRUCTURE file)
+struct_data <- read.table("NZ_oop_90p_randomsnp.stru", header = FALSE)
+sample_labels <- unique(as.character(struct_data[, 1]))
+
+# Pick you own colors (if you want)
+# Plot the barchart without default x-axis
+my.colors <- c("#8dd3c7", "#fdb462", "#b3de69", "#bebada", "#ffffb3", "#fccde5", "#fb8072", "#80b1d3")
+my.colors2 <- c("#b3de69", "#80b1d3", "#bebada", "#fdb462", "#fb8072", "#ffffb3", "#8dd3c7", "#fccde5")
+
+
+#Save PDF
+#pdf("snmf_k7_v2.pdf")
+barchart(project.snmf, K = 7, run = best, border = NA, space = 0, col = my.colors2,
+         xlab = "Individuals", ylab = "Ancestry proportions", 
+         main = "Ancestry matrix", xaxt='n')
+
+# Reorder sample labels based on ordered_indices
+plot_order <- bp$order
+# Reorder sample labels according to the plot order
+ordered_sample_labels <- sample_labels[plot_order]
+
+# Customize the x-axis to place the sample labels correctly
+axis(1, at = seq(0.5, 44.5, by = 1), labels = FALSE)
+
+# Add rotated sample names below the x-axis
+text(x = seq(0.5, 44.5, length.out = 45), y = -0.02, 
+     labels = ordered_sample_labels, srt = 90, adj = 1, xpd = TRUE, cex = 0.7)
+
+#dev.off() 
+
+```
+
+
+###### Population Genetics (ish) statistics  (code written by bestie chatgpt lol)
+
+I have added paranuncia.csv to the drive (which should contain locality info for the tasmanian speciemens sequenced + some others, lmk if there is any data missing, feel free to edit as appropriate).  In place of PASS-Q30-SNPs-recal_90cov.recode_randSNP_copy.vcf which is currently in the code below you will want to use "PASS-Q30-SNPs-recal-TAS-90p_randSNP.vcf" which is in our SNP folder in google drive. I think that using the 90p file will be best in this instance to avoid missing data when calculating stats, even though it is fewer loci overall.
+
+#### NOTE You will need to edit path/file names and specimen names to match our populations/species, the following chunk loads the data, formats it as we need it and then defines the functions for running the analyses we want. We will call these functions in the following chunks.
+```{r}
+library(pegas)
+library(vcfR)
+library(ape)
+library(geosphere)
+library(reshape2)
+library(ggplot2)
+library(dplyr)
+
+#library(LEA)
+#library(fields)
+#library(RColorBrewer)
+#library(mapplots)
+
+############################################################################################################
+########################################## Preparing data ##################################################
+############################################################################################################
+setwd("/Users/alord/Desktop/Thesis_chapters/NZ_Ooperipatellus/Aus_genetic_stats")
+# Read the VCF file
+All_OOp.vcf <- read.vcfR("PASS-Q30-SNPs-recal_90cov.recode_randSNP_copy.vcf")
+# Examine the VCF data
+print(All_OOp.vcf)
+
+############################################################################################################
+########################################## Subsetting data #################################################
+############################################################################################################
+colnames(All_OOp.vcf@gt)
+############################################################################################################
+# Sample names from the "cryptus" group
+cryptus_samples <- c(
+  "Ooperipatellus_131362-mapped",
+  "Ooperipatellus_decoratus_164551-mapped"
+)
+
+# Include "FORMAT"
+cols_to_keep <- c("FORMAT", cryptus_samples)
+
+# Subset and assign to new VCF object called 'cryptus'
+cryptus <- All_OOp.vcf  # 🔄 replace with your actual VCF object (e.g. my_vcf)
+cryptus@gt <- All_OOp.vcf@gt[, cols_to_keep, drop = FALSE]
+############################################################################################################
+# Define sample names
+# Sample names from the "decoratusA" group
+decoratusA_samples <- c(
+  "Ooperipatellus_164553-mapped",
+  "Ooperipatellus_decoratus_131361-mapped",
+  "Ooperipatellus_164529-mapped",
+  "Ooperipatellus_164532-mapped"
+)
+
+# Include "FORMAT"
+cols_to_keep <- c("FORMAT", decoratusA_samples)
+
+# Subset and assign to new VCF object called 'decoratusA'
+decoratusA <- All_OOp.vcf  # 🔄 replace with your actual VCF name
+decoratusA@gt <- All_OOp.vcf@gt[, cols_to_keep, drop = FALSE]
+############################################################################################################
+# Sample names from the "decoratusB" group
+decoratusB_samples <- c(
+  "Ooperipatellus_164550-mapped",
+  "Ooperipatellus_164548-mapped",
+  "Ooperipatellus_164522_a-mapped",
+  "Ooperipatellus_164533-mapped",
+  "Ooperipatellus_164537-mapped"
+)
+
+# Include "FORMAT"
+cols_to_keep <- c("FORMAT", decoratusB_samples)
+
+# Subset and assign to new VCF object called 'decoratusB'
+decoratusB <- All_OOp.vcf  # 🔄 replace with your actual VCF object name
+decoratusB@gt <- All_OOp.vcf@gt[, cols_to_keep, drop = FALSE]
+############################################################################################################
+# Sample names from the "mathinnae" group
+mathinnae_samples <- c(
+  "Ooperipatellus_J6499-mapped",
+  "Ooperipatellus_164559-mapped",
+  "Ooperipatellus_164562-mapped",
+  "Peripatopsidae_J6378-mapped",
+  "Ooperipatellus_164560-mapped",
+  "Ooperipatellus_164556-mapped",
+  "Ooperipatellus_164558-mapped"
+)
+
+# Include "FORMAT"
+cols_to_keep <- c("FORMAT", mathinnae_samples)
+
+# Subset and assign to new VCF object called 'mathinnae'
+mathinnae <- All_OOp.vcf  # 🔄 replace with your actual VCF object name
+mathinnae@gt <- All_OOp.vcf@gt[, cols_to_keep, drop = FALSE]
+############################################################################################################
+# Sample names from the "cynocephalus" group
+cynocephalus_samples <- c(
+  "Ooperipatellus_164547-mapped",
+  "Ooperipatellus_164552-mapped"
+)
+
+# Include "FORMAT"
+cols_to_keep <- c("FORMAT", cynocephalus_samples)
+
+# Subset and assign to new VCF object called 'cynocephalus'
+cynocephalus <- All_OOp.vcf  # 🔄 replace with your actual VCF object name
+cynocephalus@gt <- All_OOp.vcf@gt[, cols_to_keep, drop = FALSE]
+############################################################################################################
+# Sample names from the "notus" group
+notus_samples <- c(
+  "Ooperipatellus_164563-mapped",
+  "Ooperipatellus_164564-mapped",
+  "Ooperipatellus_J1434-mapped",
+  "Ooperipatellus_J2675-mapped",
+  "Ooperipatellus_J6458-mapped",
+  "Ooperipatellus_J6461-mapped"
+)
+
+# Include "FORMAT"
+cols_to_keep <- c("FORMAT", notus_samples)
+
+# Subset and assign to new VCF object called 'notus'
+notus <- All_OOp.vcf  # 🔄 Replace with your actual VCF object name
+notus@gt <- All_OOp.vcf@gt[, cols_to_keep, drop = FALSE]
+############################################################################################################
+# Sample names from the "spenceri" group
+spenceri_samples <- c(
+  "Ooperipatellus_J6454-mapped",
+  "Ooperipatellus_164566-mapped",
+  "Ooperipatellus_J6149-mapped",
+  "Ooperipatellus_spenceri_164521-mapped",
+  "Ooperipatellus_spenceri_164519-mapped",
+  "Ooperipatellus_spenceri_164520-mapped",
+  "Ooperipatellus_J6452-mapped",
+  "Ooperipatellus_nickmayeri_164527-mapped",     # labeled as nickmayeri in VCF
+  "Ooperipatellus_sp_MCZ131364-mapped",          # labeled as "sp"
+  "Ooperipatellus_SD_TAS_Lost_falls-mapped",     # likely MCZ:173007
+  "Peripatopsidae_sp_J6472-mapped"               # outgroup or family-level label
+)
+
+# Include "FORMAT"
+cols_to_keep <- c("FORMAT", spenceri_samples)
+
+# Subset and assign to new VCF object called 'spenceri'
+spenceri <- All_OOp.vcf  # 🔄 replace with your actual VCF object name
+spenceri@gt <- All_OOp.vcf@gt[, cols_to_keep, drop = FALSE]
+############################################################################################################
+############################################################################################################
+############################################################################################################
+########################################## Preparing data ##################################################
+############################################################################################################
+
+#datset names: "cryptus", "decoratusA", "decoratusB", "mathinnae", "cynocephalus", "notus", "spenceri"
+
+# use paranuncia.csv
+# load all the locality data named to match the vcf files
+metadata <- read.csv("aus_locals.csv")
+# Clean and keep only relevant columns as needed (filter by species if necessary)
+squat_meta <- metadata[, c("ID", "Latitude", "Longitude")]
+
+
+############################################################################################################
+############################################################################################################
+#Helper function
+process_vcf_group <- function(vcf_object, group_name, output_dir = "group_analysis_results/") {
+  message("Processing group: ", group_name)
+  dir.create(output_dir, showWarnings = FALSE)
+
+  # STEP 1: Extract allele information
+  alleles_t <- t(extract.gt(vcf_object, return.alleles = TRUE))
+
+  # STEP 1b: Simplify alleles
+  simplify_alleles <- function(genotype) {
+    alleles <- unlist(strsplit(genotype, "/"))
+    if (length(unique(alleles)) > 1) {
+      return(switch(
+        paste(sort(alleles), collapse = ""),
+        "AC" = "M", "AG" = "R", "AT" = "W",
+        "CG" = "S", "CT" = "Y", "GT" = "K",
+        "AA" = "A", "CC" = "C", "GG" = "G", "TT" = "T",
+        "N"  # fallback
+      ))
+    } else {
+      return(alleles[1])
+    }
+  }
+
+  simplified_matrix <- apply(alleles_t, c(1, 2), simplify_alleles)
+
+  # ✅ Preserve sample rownames
+  rownames(simplified_matrix) <- rownames(alleles_t)
+
+  # STEP 1c: Convert to DNAbin
+  dnabin_object <- as.DNAbin(simplified_matrix)
+
+  # STEP 2: Diversity stats
+  haps <- haplotype(dnabin_object)
+  hap_diversity <- hap.div(haps)
+  nucleotide_diversity <- nuc.div(dnabin_object)
+  tajima <- tajima.test(dnabin_object)$D
+
+  # STEP 3: Pairwise genetic distances
+  pairwise_diffs <- dist.dna(dnabin_object, model = "raw", pairwise.deletion = TRUE)
+  genetic_matrix <- as.matrix(pairwise_diffs)
+  sample_ids <- rownames(genetic_matrix)
+
+  # STEP 3b: Plot mismatch histogram
+  pairwise_diffs_vec <- as.vector(pairwise_diffs)
+  hist_file <- file.path(output_dir, paste0(group_name, "_pairwise_hist.png"))
+  png(hist_file, width = 600, height = 400)
+  hist(pairwise_diffs_vec,
+       main = paste("Pairwise Differences –", group_name),
+       xlab = "Genetic Distance", col = "lightblue")
+  dev.off()
+
+  # STEP 4: Match to metadata
+  missing_ids <- setdiff(sample_ids, squat_meta$ID)
+  if (length(missing_ids) > 0) {
+    warning(paste("⚠️ Missing sample IDs in metadata for group", group_name, ":", paste(missing_ids, collapse = ", ")))
+    return(data.frame(
+      Group = group_name,
+      Haplotype_Diversity = hap_diversity,
+      Nucleotide_Diversity = nucleotide_diversity,
+      Tajima_D = tajima,
+      Correlation_IBD_r = NA,
+      P_value_IBD = NA
+    ))
+  }
+
+  squat_subset <- squat_meta %>% filter(ID %in% sample_ids)
+  coords <- squat_subset[match(sample_ids, squat_subset$ID), c("Longitude", "Latitude")]
+
+  # STEP 5: Geographic distance matrix
+  geo_matrix <- distm(coords) / 1000  # kilometers
+  rownames(geo_matrix) <- sample_ids
+  colnames(geo_matrix) <- sample_ids
+
+  # STEP 6: Melt matrices for IBD
+  geo_df <- melt(geo_matrix)
+  gen_df <- melt(genetic_matrix)
+  colnames(geo_df) <- colnames(gen_df) <- c("ID1", "ID2", "Value")
+  names(geo_df)[3] <- "Geographic_Distance"
+  names(gen_df)[3] <- "Genetic_Distance"
+
+  ibd_df <- merge(geo_df, gen_df, by = c("ID1", "ID2"))
+
+  # STEP 7: Correlation and Linear Model
+  cor_result <- cor.test(ibd_df$Geographic_Distance, ibd_df$Genetic_Distance)
+
+  # STEP 8: Plot IBD
+  # 1. Assemble the ggplot object
+  p <- ggplot(ibd_df, aes(x = Geographic_Distance, y = Genetic_Distance)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = TRUE, color = "blue") +
+    labs(title = paste("IBD Plot –", group_name),
+         x = "Geographic Distance (km)",
+         y = "Genetic Distance") +
+    theme_minimal() +
+    annotate("text", x = Inf, y = Inf,
+             label = paste0("r = ", round(cor_result$estimate, 3),
+                            "\np = ", format.pval(cor_result$p.value, digits = 3, eps = 0.001)),
+             hjust = 1.1, vjust = 2, size = 3.5, color = "red")
+  
+  # 2. Show it interactively
+  print(p)  # 🖼 Appears in RStudio Plots pane
+  
+  # 3. Save to PNG
+  ggsave(
+    filename = file.path(output_dir, paste0(group_name, "_IBD_plot.pdf")),
+    plot = p,
+    width = 6, height = 4, units = "in"
+  )
+
+  # STEP 9: Return summary
+  return(data.frame(
+    Group = group_name,
+    Haplotype_Diversity = hap_diversity,
+    Nucleotide_Diversity = nucleotide_diversity,
+    Tajima_D = tajima,
+    Correlation_IBD_r = cor_result$estimate,
+    P_value_IBD = cor_result$p.value
+  ))
+}
+
+```
+
+##### Running the functions
+
+```{r}
+#run on all datasets
+# List of dataset names
+group_names <- c("cryptus", "decoratusA", "decoratusB", "mathinnae", "cynocephalus", "notus", "spenceri")
+
+# Run analysis and capture output stats
+all_results <- lapply(group_names, function(grp) {
+  vcf_obj <- get(grp)  # Get object from environment
+  process_vcf_group(vcf_obj, grp)
+})
+
+# Combine results to one data.frame
+results_df <- do.call(rbind, all_results)
+results_df
+# Save summary to CSV
+#write.csv(results_df, file = "group_summary_stats.csv", row.names = FALSE)
+
+# Print results
+#print(results_df)
+```
+
